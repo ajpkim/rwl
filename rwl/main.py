@@ -9,6 +9,8 @@ TODO
 - view() options
 - updating status of list items once completed
   - need some type of searching and interactive editing capabilities
+- install in editable mode: https://github.com/python-poetry/poetry/discussions/1135 (NeilGirdhar on Oct 31, 2020)
+  - setup.py
 
 Overview
 - rwl is a tool for recording things I read, watch, and listen to
@@ -18,7 +20,7 @@ Overview
 
 DATAFILE = "/home/ajpkim/code/rwl/rwl/rwl_data.csv"
 COLS = [
-    "type",
+    "category",
     "title",
     "creator",
     "date",
@@ -27,9 +29,9 @@ COLS = [
     "note",
     "url",
     "rating",
-    "status",
+    "finished",
 ]
-TYPES = [
+CATEGORIES = [
     "book",
     "essay",
     "paper",
@@ -59,51 +61,82 @@ def add_record(*args, **kwargs):
     print("------------------------------")
 
 
-def view_recent(n=10, content_type=None):
+def view_recent(n=10, shelf=False, category=None):
     df = pd.read_csv(DATAFILE)
-    if content_type:
-        df = df.loc[df["type"] == content_type]
+    df = df.loc[df["finished"] == 0] if shelf else df.loc[df["finished"] == 1]
+    if category:
+        df = df.loc[df["category"] == category]
     print(df.tail(n))
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-
     options_parent_parser = argparse.ArgumentParser(add_help=False)
-    options_parent_parser.add_argument("-c", "--creator", type=str)
-    options_parent_parser.add_argument("-n", "--note", type=str)
-    options_parent_parser.add_argument("-p", "--published", type=str)
-    options_parent_parser.add_argument("-r", "--rating", type=float)
-    options_parent_parser.add_argument("-u", "--url", type=str)
+    options_parent_parser.add_argument("-c", "--creator", metavar="", type=str)
+    options_parent_parser.add_argument("-n", "--note", metavar="", type=str)
+    options_parent_parser.add_argument("-p", "--published", metavar="", type=str)
+    options_parent_parser.add_argument("-r", "--rating", metavar="", type=float)
+    options_parent_parser.add_argument("-u", "--url", metavar="", type=str)
 
-    add_list_parent_parser = argparse.ArgumentParser(add_help=False)
-    add_list_parent_parser.add_argument("type", type=str, choices=TYPES)
-    add_list_parent_parser.add_argument("title", type=str)
+    add_shelf_parent_parser = argparse.ArgumentParser(add_help=False)
+    add_shelf_parent_parser.add_argument(
+        "category",
+        metavar="Category",
+        type=str,
+        choices=CATEGORIES,
+        help=f"{CATEGORIES}",
+    )
+    add_shelf_parent_parser.add_argument(
+        "title", metavar="Title", type=str, help="Title of material"
+    )
 
     main_parser = argparse.ArgumentParser()
     subparser = main_parser.add_subparsers(dest="command")
 
     add_parser = subparser.add_parser(
-        "add", parents=[add_list_parent_parser, options_parent_parser]
+        "add",
+        description="Record finished items",
+        parents=[add_shelf_parent_parser, options_parent_parser],
     )
     add_parser.add_argument(
-        "-d", "--date", type=str, default=datetime.datetime.today().strftime("%Y-%m-%d")
+        "-d",
+        "--date",
+        metavar="",
+        type=str,
+        default=datetime.datetime.today().strftime("%Y-%m-%d"),
     )
 
-    list_parser = subparser.add_parser(
-        "list", parents=[add_list_parent_parser, options_parent_parser]
+    shelf_parser = subparser.add_parser(
+        "shelf",
+        description="Shelve material for later",
+        parents=[add_shelf_parent_parser, options_parent_parser],
     )
 
-    view_parser = subparser.add_parser("view", parents=[options_parent_parser])
+    view_parser = subparser.add_parser(
+        "view",
+        description="View recorded data on finished and shelved items",
+        parents=[options_parent_parser],
+    )
+    view_parser.add_argument(
+        "content",
+        metavar="Type of entries",
+        choices=["fin", "shelf"],
+        help="[fin, shelf]",
+    )
+    view_parser.add_argument(
+        "category",
+        metavar="Category",
+        nargs="*",
+        choices=CATEGORIES,
+        help=f"{CATEGORIES}",
+    )
     view_parser.add_argument("-N", "--number", type=int, default=10)
-    view_parser.add_argument("-t", "--type", type=str, choices=TYPES, default="book")
 
     args = main_parser.parse_args()
     kwargs = vars(args)
 
-    if args.command in ["add", "list"]:
+    if args.command in ["add", "shelf"]:
         status_timestamp = {
-            "status": int(args.command == "add"),
+            "finished": int(args.command == "add"),
             "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
         }
         kwargs.update(status_timestamp)
@@ -111,4 +144,5 @@ if __name__ == "__main__":
         add_record(**kwargs)
 
     if args.command == "view":
-        view_recent(content_type=args.type)
+        shelf = args.content == "shelf"
+        view_recent(n=args.number, shelf=shelf, category=args.category)
